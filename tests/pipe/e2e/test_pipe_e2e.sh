@@ -92,10 +92,10 @@ wait "${PLAYER3}" || true
 # Assertions on server stdout first, because your Game currently prints there.
 grep -q ">>> Werewolf game starting <<<" "${LOG_DIR}/server.stdout"
 grep -q "Lobby initialized with 4 players." "${LOG_DIR}/server.stdout"
-grep -q "Night begins" "${LOG_DIR}/server.stdout"
+grep -q "Night starts" "${LOG_DIR}/server.stdout"
 grep -q "Night: player2 was killed." "${LOG_DIR}/server.stdout"
 grep -q "Final words from player2: I am killed." "${LOG_DIR}/server.stdout"
-grep -q "Day begins" "${LOG_DIR}/server.stdout"
+grep -q "Day starts" "${LOG_DIR}/server.stdout"
 grep -q "Day: player3 was lynched." "${LOG_DIR}/server.stdout"
 grep -q "Final words from player3: I am lynched." "${LOG_DIR}/server.stdout"
 

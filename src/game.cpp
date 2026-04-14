@@ -81,7 +81,7 @@ void Game::run() {
     }
   }
 
-  log(">>> Werewolf game ended <<<");
+  broadcast_to_slots(">>> Werewolf game ended <<<", connected_slots());
   broadcast_to_slots("close", connected_slots());
 }
 
@@ -301,7 +301,7 @@ WitchAction Game::witch_magic_power(const VoteResult result) {
 VoteResult Game::collect_votes(const std::vector<int>& voters,
                                const std::vector<int>& candidates,
                                int duration) {
-  log("[vote] starts");
+  broadcast_to_slots("[vote] starts", voters);
   VoteResult vr;
 
   auto timeout =
@@ -356,7 +356,7 @@ VoteResult Game::collect_votes(const std::vector<int>& voters,
     vr.target = target;
   }
 
-  log("[vote] ends");
+  broadcast_to_slots("[vote] ends", voters);
   return vr;
 }
 
@@ -476,21 +476,19 @@ bool Game::kill_player(const int slot) {
 
 void Game::handle_night_vote_result(const WitchAction& action,
                                     const VoteResult& result) {
-  auto sentence = [&](VoteResult result, const std::string& phase) {
-    switch (result.status) {
+  std::vector<std::pair<int, std::string>> deaths;
+
+  auto collect = [&](const VoteResult& r, const std::string& phase) {
+    switch (r.status) {
       case VoteStatus::Decided:
-        if (kill_player(result.target)) {
-          announce_death(result.target, phase);
-          dead_phase(result.target);
-        }
+        deaths.emplace_back(r.target, phase);
         break;
       case VoteStatus::Tie:
-        // stochastic / deterministic_vote pick one victim
-        // currently no-op
-        log("Night: vote tied. Nobody was killed.");
+        broadcast_to_slots("Night: vote tied. Nobody was killed.",
+                           alive_slots());
         break;
       case VoteStatus::NoDecision:
-        log("Night: no decision was made.");
+        broadcast_to_slots("Night: no decision was made.", alive_slots());
         break;
     }
   };
@@ -499,21 +497,32 @@ void Game::handle_night_vote_result(const WitchAction& action,
     case WitchAction::Magic::Healed:
       log("Witch healed " + get_player_info(result.target)->name);
       return;
-    case WitchAction::Magic::Poisoned: {
-      // sentence wolf victim first
-      sentence(result, "night");
-      VoteResult poison_result = VoteResult();
-      poison_result.status = VoteStatus::Decided;
-      poison_result.target = action.poison_target;
 
-      // then sentence poisoned victim
-      sentence(poison_result, "poison");
-      return;
-    }
+    case WitchAction::Magic::Poisoned:
+      collect(result, "night");
+      collect({VoteStatus::Decided, action.poison_target}, "poison");
+      break;
+
     case WitchAction::Magic::Skip:
-      sentence(result, "night");
-      return;
+      collect(result, "night");
+      break;
   }
+
+  // dedup: same person die once per night
+  uint32_t killed = 0;
+  std::vector<std::pair<int, std::string>> unique_deaths;
+  for (auto& [target, phase] : deaths) {
+    if (killed & (1u << target)) continue;
+    unique_deaths.emplace_back(target, phase);
+    killed |= (1u << target);
+  }
+
+  // uniform updates
+  for (auto& [target, phase] : unique_deaths) kill_player(target);
+
+  for (auto& [target, phase] : unique_deaths) announce_death(target, phase);
+
+  for (auto& [target, phase] : unique_deaths) dead_phase(target);
 }
 
 void Game::handle_day_vote_result(const VoteResult& result) {
@@ -677,7 +686,6 @@ void Game::lobby_phase() {
 // get victim sets
 // choose smallest slot as victim (deterministic_vote)
 void Game::night_phase() {
-  log("Night begins");
   broadcast_to_slots("Night starts", alive_slots());
 
   chat_phase(alive_slots_with_role(Role::Wolf));
@@ -687,23 +695,27 @@ void Game::night_phase() {
   auto action = witch_magic_power(result);
   handle_night_vote_result(action, result);
 
-  log("Night ends");
+  broadcast_to_slots("Night ends", alive_slots());
 }
 
 void Game::day_phase() {
-  log("Day begins");
   broadcast_to_slots("Day starts", alive_slots());
 
   chat_phase(alive_slots());
   VoteResult result = conduct_day_vote();
   handle_day_vote_result(result);
-  log("Day ends");
+
+  broadcast_to_slots("Day ends", alive_slots());
 }
 
 // return immediately after recving the first dead note.
 void Game::dead_phase(int slot) {
   auto info = get_player_info(slot);
   if (!info) return;
+
+  std::string dead_announcement =
+      std::to_string(slot) + " is dead. Final words...";
+  broadcast_to_slots(dead_announcement, connected_slots());
 
   auto timeout = std::chrono::steady_clock().now() +
                  std::chrono::seconds(cfg_.death_speech_seconds);
@@ -723,7 +735,7 @@ void Game::dead_phase(int slot) {
 // chat<colon><space> if the condition is true, we get the actual text from the
 // msg and broadcast to everyone other than the slot itself.
 void Game::chat_phase(const std::vector<int>& slots) {
-  log("[chat] starts");
+  broadcast_to_slots("Chat starts", alive_slots());
   auto timeout = std::chrono::steady_clock().now() +
                  std::chrono::seconds(cfg_.chat_duration);
   while (std::chrono::steady_clock().now() < timeout) {
@@ -747,7 +759,7 @@ void Game::chat_phase(const std::vector<int>& slots) {
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(cfg_.delay_ms));
   }
-  log("[chat] ends.");
+  broadcast_to_slots("Chat ends", alive_slots());
 }
 
 // rule
@@ -794,17 +806,20 @@ void Game::log_assigned_slots(std::vector<int>& slots) {
 }
 
 void Game::log_winner(Winner winner) {
+  std::string msg;
   switch (winner) {
     case Winner::Village:
-      log("--- Village Win ---");
+      msg = "--- Village Win ---";
       break;
     case Winner::Wolf:
-      log("--- Wolves Win ---");
+      msg = "--- Wolves Win ---";
       break;
     case Winner::TBD:
       log("--- Game continues ---");
       break;
   }
+  broadcast_to_slots(msg, connected_slots());
+  log(msg);
 }
 
 void Game::log_rounds() {
