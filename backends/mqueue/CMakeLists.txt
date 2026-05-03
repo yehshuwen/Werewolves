@@ -1,0 +1,3 @@
+add_library(werewolf_mqueue_backend STATIC mqueue_communication.cpp)
+target_link_libraries(werewolf_mqueue_backend PUBLIC werewolf_core rt)
+target_include_directories(werewolf_mqueue_backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

@@ -39,3 +39,12 @@ add_test(
     NAME test_pipe_e2e
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/pipe/e2e/test_pipe_e2e.sh
 )
+add_test(
+    NAME test_mqueue_e2e
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/mqueue/e2e/test_mqueue_e2e.sh
+)
+
+# mqueue
+add_executable(test_mqueue ${CMAKE_CURRENT_SOURCE_DIR}/mqueue/test_mqueue.cpp)
+target_link_libraries(test_mqueue PUBLIC werewolf_mqueue_backend GTest::gtest_main)
+gtest_discover_tests(test_mqueue)

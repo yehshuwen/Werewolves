@@ -46,4 +46,16 @@
 # build files
 *build/
 
+# mac
 .DS_Store
+
+# Docker & Dev Containers
+Dockerfile
+docker-compose.yml
+.devcontainer/
+
+# vscode
+.vscode
+
+# log
+*.log
